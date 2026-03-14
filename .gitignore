@@ -9,3 +9,6 @@ __pycache__/
 
 # 自动生成的字面量索引字典（只要有数据库和脚本就能随时生成，没必要塞进代码库占用空间）
 data/literal_index.json
+
+# 离线处理生成的语义增强缓存文件
+data/metadata_cache/
