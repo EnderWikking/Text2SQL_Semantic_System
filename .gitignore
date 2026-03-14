@@ -3,3 +3,9 @@
 *.db
 *.sqlite
 data/dev_databases/
+# Python 编译缓存（运行 Python 时自动生成的临时文件夹）
+__pycache__/
+*.pyc
+
+# 自动生成的字面量索引字典（只要有数据库和脚本就能随时生成，没必要塞进代码库占用空间）
+data/literal_index.json
