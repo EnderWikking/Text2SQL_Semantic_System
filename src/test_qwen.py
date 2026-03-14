@@ -12,7 +12,7 @@ def test_qwen_api():
     print("🚀 正在使用 qwen-plus 模型进行测试...")
     try:
         completion = client.chat.completions.create(
-            model="qwen-plus",  # 消耗你的免费额度
+            model="qwen3.5-plus",  # 消耗你的免费额度
             messages=[
                 {"role": "system", "content": "你是一个资深的数据库专家。"},
                 {

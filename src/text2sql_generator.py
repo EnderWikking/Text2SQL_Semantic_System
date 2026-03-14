@@ -44,7 +44,7 @@ def generate_sql(question, matched_columns):
     )
 
     response = client.chat.completions.create(
-        model="qwen-plus",
+        model="qwen3.5-plus",
         messages=[
             {"role": "system", "content": system_prompt},
             {

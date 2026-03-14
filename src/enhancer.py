@@ -51,7 +51,7 @@ def stream_semantic_enhancement(table_profile):
     try:
         # 开启 stream=True，实现打字机效果
         response = client.chat.completions.create(
-            model="qwen-plus",
+            model="qwen3.5-plus",
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": f"这是提取到的物理画像：\n{table_profile}"},

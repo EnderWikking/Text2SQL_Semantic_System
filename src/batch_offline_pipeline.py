@@ -59,7 +59,7 @@ def enhance_semantics_with_retry(db_name, table_name, table_profile, max_retries
     for attempt in range(max_retries):
         try:
             response = client.chat.completions.create(
-                model="qwen-plus",
+                model="qwen3.5-plus",
                 messages=[
                     {
                         "role": "system",
