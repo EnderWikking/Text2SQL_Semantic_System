@@ -12,6 +12,11 @@ data/literal_index.json
 
 # 离线处理生成的语义增强缓存文件
 data/metadata_cache/
+data/evaluation_results.json
+
+
+
+#sk-7106955771c249b59a10831ab07b71b9
 
 
 #source .venv/bin/activate
