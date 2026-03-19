@@ -12,6 +12,7 @@ data/literal_index.json
 
 # 离线处理生成的语义增强缓存文件
 data/metadata_cache/
+data/metadata_cache_old/
 data/evaluation_results.json
 
 
@@ -20,3 +21,5 @@ data/evaluation_results.json
 
 
 #source .venv/bin/activate
+*.npz
+
