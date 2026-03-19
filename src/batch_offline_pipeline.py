@@ -24,7 +24,22 @@ def get_db_profile(db_path):
         try:
             # 工业级防崩：如果表太大，绝不全量读取，只采样子集获取 Schema
             df = pd.read_sql_query(f"SELECT * FROM {table} LIMIT 50000", conn)
-            table_info = {"row_count": len(df), "columns": {}}
+            
+            # 提取主外键信息（对 Text2SQL JOIN 至关重要）
+            pk_info = pd.read_sql_query(f"PRAGMA table_info({table})", conn)
+            primary_keys = pk_info[pk_info['pk'] > 0]['name'].tolist()
+            
+            fk_info = pd.read_sql_query(f"PRAGMA foreign_key_list({table})", conn)
+            foreign_keys = []
+            for _, row in fk_info.iterrows():
+                foreign_keys.append({"from_column": row['from'], "to_table": row['table'], "to_column": row['to']})
+
+            table_info = {
+                "row_count": len(df), 
+                "primary_keys": primary_keys,
+                "foreign_keys": foreign_keys,
+                "columns": {}
+            }
 
             for col in df.columns:
                 null_count = int(df[col].isnull().sum())
@@ -49,11 +64,23 @@ def get_db_profile(db_path):
 
 
 def enhance_semantics_with_retry(db_name, table_name, table_profile, max_retries=3):
-    """带重试机制的 LLM API 调用，专治网络波动和限流"""
+    """带重试机制的 LLM API 调用，专治网络波动和限流，强制返回 JSON 结构化元数据。"""
     prompt = (
-        f"作为数据库专家，请分析数据库 {db_name} 中的表 {table_name} 的物理画像。\n"
-        f"画像数据：{json.dumps(table_profile, ensure_ascii=False)}\n"
-        "请推断每个字段的业务含义，并简要说明在 Text2SQL 中写 WHERE 条件时的约束（如是否带引号、保留前导零等）。直接输出精简的描述文本。"
+        f"作为顶级数据库架构师，请深度分析数据库 {db_name} 中 {table_name} 表的物理画像。\n"
+        f"画像数据（含空值率、主外键等）：{json.dumps(table_profile, ensure_ascii=False)}\n\n"
+        "任务要求：\n"
+        "1. 详细推衍每个字段的业务语义，补充在 Text2SQL 中生成 WHERE 或 JOIN 时的具体约束口径。\n"
+        "2. 你必须完全返回合法的 JSON 对象。请严格遵守以下 JSON 结构：\n"
+        "{\n"
+        '  "table_summary": "一句话概括该表的业务核心用途",\n'
+        '  "join_hints": "若存在外键关系，详细说明在跨表关联（JOIN）或嵌套查询时的关键注意事项。若无，留空。",\n'
+        '  "columns_semantic": {\n'
+        '    "这里填列名": {\n'
+        '      "description": "详细且准确的业务含义解释",\n'
+        '      "sql_format_constraints": "在生成 SQL 时，如何正确处理数值/文本的格式？是否需要加单引号或特定类型转换？"\n'
+        '    }\n'
+        '  }\n'
+        "}"
     )
 
     for attempt in range(max_retries):
@@ -63,18 +90,20 @@ def enhance_semantics_with_retry(db_name, table_name, table_profile, max_retries
                 messages=[
                     {
                         "role": "system",
-                        "content": "你是一个严谨的 Text-to-SQL 数据分析师。",
+                        "content": "你是一个极其严谨的 Text-to-SQL 数据分析专家，你只输出完全合法且无多余说明的 JSON 格式。",
                     },
                     {"role": "user", "content": prompt},
                 ],
+                response_format={"type": "json_object"},
                 timeout=45,
             )
-            return response.choices[0].message.content
+            result_str = response.choices[0].message.content
+            return json.loads(result_str)  # 强制校验并解析为 dict
         except Exception as e:
-            print(f"    ⏳ API调用失败 (尝试 {attempt+1}/{max_retries}): {e}")
+            print(f"    ⏳ API调用或JSON解析失败 (尝试 {attempt+1}/{max_retries}): {e}")
             time.sleep(2**attempt)  # 指数退避策略：1s, 2s, 4s...
 
-    return "LLM_ENHANCEMENT_FAILED"
+    return {"error": "LLM_ENHANCEMENT_FAILED"}
 
 
 def run_industrial_pipeline(base_dir):

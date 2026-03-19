@@ -1,5 +1,6 @@
 import json
 import os
+import numpy as np
 from openai import OpenAI
 
 # 1. 初始化千问大模型
@@ -25,6 +26,55 @@ def link_schema_by_literal(question, index_path):
             matched_columns.update(columns)
 
     return list(matched_columns)
+
+
+def link_schema_by_vector(question, vector_path="data/vector_index.npz", top_k=5):
+    """
+    核心黑科技 2.0：密集检索（Dense Retrieval）。
+    将自然语言问题转为向量，通过余弦相似度召回最贴切的数据库列。
+    解决了纯字面量匹配中“同义词、缩写无法命中”的痛点。
+    """
+    if not os.path.exists(vector_path):
+        return []
+        
+    print("🧠 [Schema Linking] 正在通过大模型向量空间进行语义余弦相似度(Dense)匹配...")
+    
+    try:
+        # 1. 在线将用户问题向量化
+        response = client.embeddings.create(
+            model="text-embedding-v3", 
+            input=[question]
+        )
+        query_vector = np.array(response.data[0].embedding, dtype=np.float32)
+        
+        # 2. 毫秒级加载本地 Numpy 高维知识库
+        data = np.load(vector_path, allow_pickle=True)
+        embeddings_matrix = data["embeddings"]
+        keys = data["keys"]
+        
+        # 3. 矩阵点乘，极速计算所有列与提问的余弦相似度
+        norm_q = np.linalg.norm(query_vector)
+        norms_e = np.linalg.norm(embeddings_matrix, axis=1)
+        similarities = np.dot(embeddings_matrix, query_vector) / (norm_q * norms_e + 1e-10)
+        
+        # 4. 获取 Top-K 最相关的物理列
+        top_indices = np.argsort(similarities)[-top_k:][::-1]
+        
+        matched_columns = []
+        for idx in top_indices:
+            col_key = keys[idx]
+            score = similarities[idx]
+            # 引入置信度阈值机制，防止胡乱召回
+            if score > 0.35:
+                print(f"  🌌 命中相似高维向量: '{col_key}' (相似度: {score:.3f})")
+                parts = col_key.split(".")
+                if len(parts) >= 2:
+                    matched_columns.append(f"{parts[-2]}.{parts[-1]}")
+                    
+        return matched_columns
+    except Exception as e:
+        print(f"❌ 向量召回失败: {e}")
+        return []
 
 
 def generate_sql(question, matched_columns):
@@ -71,15 +121,19 @@ if __name__ == "__main__":
     print(f"👤 用户提问: {user_question}\n")
 
     if os.path.exists(index_file):
-        # 1. 第一步：模式链接（Schema Linking）
-        relevant_cols = link_schema_by_literal(user_question, index_file)
+        # 1. 传统架构：精确匹配保下限
+        exact_cols = link_schema_by_literal(user_question, index_file)
 
-        # 2. 第二步：生成 SQL
-        if relevant_cols:
-            generate_sql(user_question, relevant_cols)
+        # 2. 现代架构：向量召回提上限 (Hybrid Retrieval)
+        vector_index_file = os.path.join("data", "vector_index.npz")
+        vector_cols = link_schema_by_vector(user_question, vector_index_file)
+        
+        # 3. 双路融合，合并作为最终提示词 Context
+        final_cols = list(set(exact_cols + vector_cols))
+
+        if final_cols:
+            generate_sql(user_question, final_cols)
         else:
-            print(
-                "❌ 没有从字典中匹配到相关列，可能需要引入向量检索（FAISS）作为补充。"
-            )
+            print("❌ 无论是字典还是向量均未命中列，请检查模型知识库情况。")
     else:
         print(f"❌ 找不到字典文件: {index_file}")
