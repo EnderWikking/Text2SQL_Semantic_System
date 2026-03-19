@@ -33,6 +33,7 @@ def process_single_case(args):
     db_id = test_case["db_id"]
     question = test_case["question"]
     gold_sql = test_case["SQL"]
+    evidence = test_case.get("evidence", "").strip()
 
     db_path = os.path.join("data", "dev_databases", db_id, f"{db_id}.sqlite")
     try:
@@ -45,102 +46,93 @@ def process_single_case(args):
     external_context = ""
     system_content = "你是一个严谨的 Text-to-SQL 数据分析师。"
     
+    # 通用 evidence 注入段（498/500题都自带这个关键提示）
+    evidence_block = ""
+    if evidence:
+        evidence_block = f"\n\n【关键提示 (Evidence)】：\n{evidence}"
+    
     if mode == "baseline":
-        external_context = f"【数据库建表语句 DDL】:\n{raw_ddl}"
+        external_context = f"【数据库建表语句 DDL】:\n{raw_ddl}{evidence_block}"
         
     elif mode == "official":
-        evidence = "No additional evidence."
-        if isinstance(official_knowledge, list) and index < len(official_knowledge):
-            item = official_knowledge[index]
-            evidence = item.get("evidence", str(item)) if isinstance(item, dict) else str(item)
-        elif isinstance(official_knowledge, dict):
-            evidence = official_knowledge.get(str(index), "No additional evidence.")
-        external_context = f"【数据库建表语句 DDL】:\n{raw_ddl}\n\n【官方提供辅助知识 (Official Evidence)】:\n{evidence}"
+        external_context = f"【数据库建表语句 DDL】:\n{raw_ddl}{evidence_block}"
         
     elif mode == "enhanced":
         cache_path = os.path.join("data", "metadata_cache", f"{db_id}_enhanced.json")
         schema_knowledge = ""
         if os.path.exists(cache_path):
             with open(cache_path, "r", encoding="utf-8") as f:
-                schema_knowledge = f.read()
+                full_meta = json.load(f)
+            # 只提取语义描述，剔除冗余的 physical_stats（省 ~60% Token）
+            slim_parts = []
+            for table_name, info in full_meta.items():
+                sem = info.get("semantic_description", {})
+                if sem:
+                    slim_parts.append(f"表 {table_name}: {json.dumps(sem, ensure_ascii=False)}")
+            schema_knowledge = "\n".join(slim_parts)
         
-        # 极度强化的语义约束，采用最高级的零容忍法则
         external_context = (
-            "【⚠️强制思维链与斩获高分的绝对法则⚠️】：\n"
-            "0. 终极奥义【严格字段映射】：仔细阅读问题要什么！如果问“Who/Name/which person”，最终 SELECT 绝对只能有名字字段，多一个列（比如顺带把金额 SELECT 出来）就直接零分！若需聚合或排序请只在 ORDER BY 里完成，SELECT一律干干净净只放目标列。\n"
-            "1. 你必须首先输出一段 <think> 解析过程 </think>，在这里面分析：它需要什么表？主键外键如何 JOIN？如果用了隐式 FROM A, B，立刻在草稿中重写为明确的 JOIN。\n"
-            "2. 针对聚合函数的日期：注意年份直接用 LIKE '2012%' 或者 strftime('%Y', Date)。平均每月注意需要除以 12 等。\n"
-            "3. 遇到极值或先后单词（如 least, most, top, newest），必须用 `ORDER BY ... LIMIT 1`。\n"
-            "4. 字符安全：表如果报错没找到，检查是否加了双引号；字符串值（如地点、人名）比较必须用单引号转义。\n"
-            "5. 当题目要比例/占比时，所有的除法必须将分子强制转为浮点 `CAST(A AS REAL) / B`。\n\n"
-            f"【数据库原生建表语句 (Hard DDL)】:\n{raw_ddl}\n\n"
-            f"【您挖掘出的最高阶增强语义知识库 (LLM Enhanced Metadata)】:\n{schema_knowledge}"
+            "【SQL 生成核心规则】：\n"
+            "1. 严格字段映射：SELECT 只放问题要求的目标列。\n"
+            "2. 除法/比例分子转 CAST(A AS REAL)。\n"
+            "3. 极值用 ORDER BY ... LIMIT 1。\n"
+            "4. 不要输出任何解释文字，直接给出 ```sql 代码块。\n\n"
+            f"【数据库建表语句 DDL】:\n{raw_ddl}{evidence_block}\n\n"
+            f"【增强语义知识库】:\n{schema_knowledge}"
         )
 
     # == 缝合最终 Prompt ==
-    prompt = f"你是一顶尖 SQL 专家。请结合以下上下文线索，编写能在 SQLite 中稳定运行的代码。你必须先在 <think> 标签内进行精细的思维链推理，推理结束后再给出最终的 ```sql 代码块。\n\n{external_context}\n\n【用户实体提问】:\n{question}"
+    prompt = f"你是一顶尖 SQL 专家。请仔细分析问题需要哪些表和列、如何 JOIN，但不要输出分析过程，直接且仅返回可在 SQLite 运行的 ```sql 代码块。\n\n{external_context}\n\n【用户提问】:\n{question}"
     
-    # 🌟 [Agent自我修正核心逻辑 (Reflexion)] 🌟
+    # 🌟 [单轮生成 + 1次纠错] 🌟
     messages = [{"role": "system", "content": system_content}, {"role": "user", "content": prompt}]
     predicted_sql = "ERROR"
     final_error_msg = ""
     is_correct = False
     
-    for attempt in range(3): # 最多允许自我反思修复 3 次
+    for attempt in range(2):  # 最多1次纠错重试
         try:
             response = client.chat.completions.create(
                 model="deepseek-chat",
                 messages=messages,
                 timeout=90,
-                temperature=0.2
+                temperature=0.0
             )
             response_content = response.choices[0].message.content
             predicted_sql = extract_sql(response_content)
         except Exception as e:
-            time.sleep(1)
-            continue
-            
+            final_error_msg = str(e)
+            break
+        
         if predicted_sql == "ERROR":
-            continue
+            break
             
-        # 尝试沙盒执行，若报错则反馈给大模型让他自己修
+        # 沙盒执行验证语法
         try:
             conn = sqlite3.connect(db_path)
-            # 配置 3秒 watchdog 防死机
-            exec_start_time = time.time()
-            def progress_handler():
-                if time.time() - exec_start_time > 3.0:
-                    return 1
-                return 0
-            conn.set_progress_handler(progress_handler, 1000)
-            
             cur = conn.cursor()
             cur.execute(predicted_sql)
             pred_res = cur.fetchall()
             conn.close()
-            
-            # 若没报错，说明语法完全OK，跳出自我反思循环，去对比金标准
             final_error_msg = ""
-            break
-            
+            break  # 执行成功，跳出
         except Exception as exec_e:
             final_error_msg = str(exec_e)
-            # 有语法错误！把错误信息抛回给它
-            feedback = f"你上次生成的 SQL 在 SQLite 中执行失败了，报错信息是：\n{final_error_msg}\n请你重新思考语法结构，修复该错误，并再次给我一个完整的包含 ```sql 的答复。"
-            messages.append({"role": "assistant", "content": response_content})
-            messages.append({"role": "user", "content": feedback})
-            continue
-
-    # 全量重考验证金标准
-    if not final_error_msg:
+            if attempt == 0:  # 仅允许1次纠错
+                feedback = f"你生成的 SQL 执行报错：{final_error_msg}\n请修复语法错误，直接给出修正后的 ```sql 代码块。"
+                messages.append({"role": "assistant", "content": response_content})
+                messages.append({"role": "user", "content": feedback})
+                continue
+            
+    # 对比金标准
+    if predicted_sql != "ERROR" and not final_error_msg:
         try:
             conn = sqlite3.connect(db_path)
             cur = conn.cursor()
-            cur.execute(gold_sql)
-            gold_res = cur.fetchall()
-            
             cur.execute(predicted_sql)
             pred_res = cur.fetchall()
+            cur.execute(gold_sql)
+            gold_res = cur.fetchall()
             conn.close()
             
             if set(gold_res) == set(pred_res):
