@@ -14,12 +14,8 @@ data/literal_index.json
 data/metadata_cache/
 data/metadata_cache_old/
 data/evaluation_results.json
-
-
-
-#sk-7106955771c249b59a10831ab07b71b9
-
-
-#source .venv/bin/activate
 *.npz
 
+# Local secrets / machine-specific runtime overrides
+scripts/api_mode_exports.private.sh
+.env.local

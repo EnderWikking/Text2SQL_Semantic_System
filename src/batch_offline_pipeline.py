@@ -1,19 +1,19 @@
-import sqlite3
-import pandas as pd
 import json
 import os
+import sqlite3
 import time
-from openai import OpenAI
 
-# 强制使用兼容模式
-client = OpenAI(
-    api_key="sk-90a75b57806f4794bdbb96273df856a3",
-    base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
-)
+import pandas as pd
+from provider_clients import get_chat_client, get_chat_model
+
+
+def quote_identifier(name):
+    # SQLite 标识符转义，避免关键字/特殊字符导致 SQL 失败
+    return '"' + str(name).replace('"', '""') + '"'
 
 
 def get_db_profile(db_path):
-    """提取单个数据库的完整物理画像，控制采样防止内存溢出"""
+    """提取单个数据库的完整物理画像，控制采样防止内存溢出。"""
     conn = sqlite3.connect(db_path)
     tables_df = pd.read_sql_query(
         "SELECT name FROM sqlite_master WHERE type='table';", conn
@@ -22,32 +22,40 @@ def get_db_profile(db_path):
     db_profile = {}
     for table in tables_df["name"]:
         try:
+            quoted_table = quote_identifier(table)
             # 工业级防崩：如果表太大，绝不全量读取，只采样子集获取 Schema
-            df = pd.read_sql_query(f"SELECT * FROM {table} LIMIT 50000", conn)
-            
+            df = pd.read_sql_query(f"SELECT * FROM {quoted_table} LIMIT 50000", conn)
+
             # 提取主外键信息（对 Text2SQL JOIN 至关重要）
-            pk_info = pd.read_sql_query(f"PRAGMA table_info({table})", conn)
-            primary_keys = pk_info[pk_info['pk'] > 0]['name'].tolist()
-            
-            fk_info = pd.read_sql_query(f"PRAGMA foreign_key_list({table})", conn)
+            pk_info = pd.read_sql_query(f"PRAGMA table_info({quoted_table})", conn)
+            primary_keys = pk_info[pk_info["pk"] > 0]["name"].tolist()
+
+            fk_info = pd.read_sql_query(f"PRAGMA foreign_key_list({quoted_table})", conn)
             foreign_keys = []
             for _, row in fk_info.iterrows():
-                foreign_keys.append({"from_column": row['from'], "to_table": row['table'], "to_column": row['to']})
+                foreign_keys.append(
+                    {
+                        "from_column": row["from"],
+                        "to_table": row["table"],
+                        "to_column": row["to"],
+                    }
+                )
+
+            row_count_df = pd.read_sql_query(f"SELECT COUNT(*) AS cnt FROM {quoted_table}", conn)
+            row_count = int(row_count_df.iloc[0]["cnt"])
 
             table_info = {
-                "row_count": len(df), 
+                "row_count": row_count,
                 "primary_keys": primary_keys,
                 "foreign_keys": foreign_keys,
-                "columns": {}
+                "columns": {},
             }
 
             for col in df.columns:
                 null_count = int(df[col].isnull().sum())
                 distinct_count = int(df[col].nunique())
                 # 提取高频样本，转换为字符串防止 JSON 序列化报错
-                top_samples = [
-                    str(x) for x in df[col].value_counts().head(5).index.tolist()
-                ]
+                top_samples = [str(x) for x in df[col].value_counts().head(5).index.tolist()]
 
                 table_info["columns"][col] = {
                     "nulls": null_count,
@@ -78,15 +86,15 @@ def enhance_semantics_with_retry(db_name, table_name, table_profile, max_retries
         '    "这里填列名": {\n'
         '      "description": "详细且准确的业务含义解释",\n'
         '      "sql_format_constraints": "在生成 SQL 时，如何正确处理数值/文本的格式？是否需要加单引号或特定类型转换？"\n'
-        '    }\n'
-        '  }\n'
+        "    }\n"
+        "  }\n"
         "}"
     )
 
     for attempt in range(max_retries):
         try:
-            response = client.chat.completions.create(
-                model="qwen3.5-plus",
+            response = get_chat_client().chat.completions.create(
+                model=get_chat_model(),
                 messages=[
                     {
                         "role": "system",
@@ -107,7 +115,7 @@ def enhance_semantics_with_retry(db_name, table_name, table_profile, max_retries
 
 
 def run_industrial_pipeline(base_dir):
-    """执行全局批量处理，并建立 Checkpoint 机制"""
+    """执行全局批量处理，并建立 Checkpoint 机制。"""
     output_dir = os.path.join("data", "metadata_cache")
     os.makedirs(output_dir, exist_ok=True)
 
@@ -127,7 +135,7 @@ def run_industrial_pipeline(base_dir):
         # 建立断点续传：如果已经存在处理完毕的 JSON，则直接跳过
         cache_file = os.path.join(output_dir, f"{db_name}_enhanced.json")
         if os.path.exists(cache_file):
-            print(f"  ⏭️ 检测到缓存，跳过...")
+            print("  ⏭️ 检测到缓存，跳过...")
             continue
 
         # 1. 物理提取

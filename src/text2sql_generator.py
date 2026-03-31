@@ -1,12 +1,11 @@
 import json
 import os
 import numpy as np
-from openai import OpenAI
-
-# 1. 初始化千问大模型
-client = OpenAI(
-    api_key="sk-90a75b57806f4794bdbb96273df856a3",
-    base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
+from provider_clients import (
+    get_chat_client,
+    get_chat_model,
+    get_embedding_client,
+    get_embedding_model,
 )
 
 
@@ -41,8 +40,8 @@ def link_schema_by_vector(question, vector_path="data/vector_index.npz", top_k=5
     
     try:
         # 1. 在线将用户问题向量化
-        response = client.embeddings.create(
-            model="text-embedding-v3", 
+        response = get_embedding_client().embeddings.create(
+            model=get_embedding_model(),
             input=[question]
         )
         query_vector = np.array(response.data[0].embedding, dtype=np.float32)
@@ -93,8 +92,8 @@ def generate_sql(question, matched_columns):
         "请直接输出 SQL，不需要任何多余的解释，并用 ```sql 和 ``` 包裹。"
     )
 
-    response = client.chat.completions.create(
-        model="qwen3.5-plus",
+    response = get_chat_client().chat.completions.create(
+        model=get_chat_model(),
         messages=[
             {"role": "system", "content": system_prompt},
             {
