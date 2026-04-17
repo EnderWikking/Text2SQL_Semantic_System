@@ -1,5 +1,7 @@
 .venv/
 .DS_Store
+.vscode/
+.$*.bkp
 *.db
 *.sqlite
 data/dev_databases/
@@ -14,8 +16,11 @@ data/literal_index.json
 data/metadata_cache/
 data/metadata_cache_old/
 data/evaluation_results.json
+data/evaluation_runs/
+data/evaluation_results_sixway_latest.json
 *.npz
 
 # Local secrets / machine-specific runtime overrides
 scripts/api_mode_exports.private.sh
 .env.local
+web_console/runtime_config.json

@@ -1,6 +1,11 @@
 import json
 import os
 import numpy as np
+from knowledge_base_paths import (
+    describe_active_kb,
+    get_literal_index_path,
+    get_vector_index_path,
+)
 from provider_clients import (
     get_chat_client,
     get_chat_model,
@@ -27,12 +32,13 @@ def link_schema_by_literal(question, index_path):
     return list(matched_columns)
 
 
-def link_schema_by_vector(question, vector_path="data/vector_index.npz", top_k=5):
+def link_schema_by_vector(question, vector_path=None, top_k=5):
     """
     核心黑科技 2.0：密集检索（Dense Retrieval）。
     将自然语言问题转为向量，通过余弦相似度召回最贴切的数据库列。
     解决了纯字面量匹配中“同义词、缩写无法命中”的痛点。
     """
+    vector_path = vector_path or get_vector_index_path()
     if not os.path.exists(vector_path):
         return []
         
@@ -112,19 +118,20 @@ def generate_sql(question, matched_columns):
 
 
 if __name__ == "__main__":
-    index_file = os.path.join("data", "literal_index.json")
+    index_file = get_literal_index_path()
 
     # 导师可能会考你的一个经典的复杂 BIRD 问题：
     user_question = "请帮我查一下，属于 Los Angeles Unified 学区（District Name），并且提供了 9-12 年级教育（GSoffered）的学校有多少所？"
 
     print(f"👤 用户提问: {user_question}\n")
+    print(f"🧱 当前知识库命名空间: {describe_active_kb()}")
 
     if os.path.exists(index_file):
         # 1. 传统架构：精确匹配保下限
         exact_cols = link_schema_by_literal(user_question, index_file)
 
         # 2. 现代架构：向量召回提上限 (Hybrid Retrieval)
-        vector_index_file = os.path.join("data", "vector_index.npz")
+        vector_index_file = get_vector_index_path()
         vector_cols = link_schema_by_vector(user_question, vector_index_file)
         
         # 3. 双路融合，合并作为最终提示词 Context

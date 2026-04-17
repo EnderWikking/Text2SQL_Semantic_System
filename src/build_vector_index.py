@@ -3,11 +3,23 @@ import os
 import time
 
 import numpy as np
+from knowledge_base_paths import (
+    describe_active_kb,
+    get_metadata_cache_dir,
+    get_vector_index_path,
+)
 from provider_clients import get_embedding_client, get_embedding_model
 
 
-def build_vector_index(metadata_dir="data/metadata_cache", output_path="data/vector_index.npz"):
+def build_vector_index(metadata_dir=None, output_path=None):
+    metadata_dir = metadata_dir or get_metadata_cache_dir()
+    output_path = output_path or get_vector_index_path()
+    output_dir = os.path.dirname(output_path)
+    if output_dir:
+        os.makedirs(output_dir, exist_ok=True)
+
     print("🚀 开始根据【强化版 JSON Metadata】构建高维向量知识库...")
+    print(f"🧱 当前知识库命名空间: {describe_active_kb()} -> {output_path}")
 
     if not os.path.exists(metadata_dir):
         print(f"❌ 找不到元数据目录: {metadata_dir}")
@@ -26,17 +38,29 @@ def build_vector_index(metadata_dir="data/metadata_cache", output_path="data/vec
             metadata = json.load(f)
 
         for table_name, table_info in metadata.items():
+            if str(table_name).startswith("__") or not isinstance(table_info, dict):
+                continue
             semantic_data = table_info.get("semantic_description", {})
             if not isinstance(semantic_data, dict):
                 continue
 
             columns_semantic = semantic_data.get("columns_semantic", {})
             for col_name, col_info in columns_semantic.items():
-                desc = col_info.get("description", "")
+                desc = (
+                    col_info.get("description", "")
+                    or col_info.get("short_description", "")
+                    or col_info.get("long_description", "")
+                )
+                long_desc = col_info.get("long_description", "")
+                literal_hints = col_info.get("literal_hints", "")
                 fmt = col_info.get("sql_format_constraints", "")
 
                 # 这一段就是浓缩给 Embedding 模型去映射向量的精选文本
-                rich_text = f"表名:{table_name} 字段名:{col_name} 核心语义:{desc} 格式约束:{fmt}"
+                rich_text = (
+                    f"表名:{table_name} 字段名:{col_name} "
+                    f"核心语义:{desc} 详细语义:{long_desc} "
+                    f"字面量线索:{literal_hints} 格式约束:{fmt}"
+                )
 
                 # key 记录身份: 数据库.表.列
                 keys.append(f"{db_name}.{table_name}.{col_name}")

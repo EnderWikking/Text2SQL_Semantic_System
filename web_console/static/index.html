@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Text2SQL 实验工作台</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+  <body>
+    <div class="page-shell">
+      <header class="hero">
+        <div class="hero-copy">
+          <p class="eyebrow">TEXT2SQL EVALUATION CONSOLE</p>
+          <h1>Text2SQL 实验评测工作台</h1>
+          <p class="hero-text">
+            页面不会替代你现有的评测脚本，只是把单组测试、六组对比、历史结果和基础柱状图整理到一个更顺手的入口里。
+          </p>
+        </div>
+        <div class="hero-panel">
+          <div class="panel-title">当前环境</div>
+          <div class="meta-grid" id="envMeta">
+            <div class="meta-pill">
+              <span>API 模式</span>
+              <strong id="apiMode">-</strong>
+            </div>
+            <div class="meta-pill">
+              <span>知识库</span>
+              <strong id="kbName">-</strong>
+            </div>
+            <div class="meta-pill meta-wide">
+              <span>Metadata Cache</span>
+              <strong id="metadataDir">-</strong>
+            </div>
+          </div>
+          <div class="mode-switch">
+            <label class="field compact-field">
+              <span>切换 API 模式</span>
+              <select id="apiModeSelect"></select>
+            </label>
+            <button class="secondary-btn compact-btn" id="applyApiModeBtn" type="button">应用模式</button>
+          </div>
+          <p class="mode-note" id="apiModeNote">当前模式配置检查中...</p>
+        </div>
+      </header>
+
+      <main class="dashboard">
+        <section class="card card-form">
+          <div class="card-header">
+            <div>
+              <p class="card-kicker">Run Panel</p>
+              <h2>一键启动评测</h2>
+            </div>
+            <div class="status-badge" id="busyBadge">空闲中</div>
+          </div>
+
+          <form id="runForm" class="run-form">
+            <label class="field">
+              <span>数据集</span>
+              <select id="datasetPath" name="dataset_path"></select>
+            </label>
+
+            <label class="field">
+              <span>模式</span>
+              <select id="mode" name="mode">
+                <option value="baseline">baseline</option>
+                <option value="official">official</option>
+                <option value="enhanced" selected>enhanced</option>
+                <option value="fused">fused</option>
+              </select>
+            </label>
+
+            <label class="field">
+              <span>样本数上限</span>
+              <input id="testLimit" name="test_limit" type="number" min="1" placeholder="留空表示全量" />
+            </label>
+
+            <label class="field">
+              <span>候选 SQL 数</span>
+              <input id="candidateCount" name="candidate_count" type="number" min="1" value="1" />
+            </label>
+
+            <label class="switch-field">
+              <span>启用数据集 hints</span>
+              <input id="useHints" name="include_dataset_evidence" type="checkbox" checked />
+            </label>
+
+            <div class="form-actions">
+              <button class="primary-btn" id="runSingleBtn" type="submit">运行单组测试</button>
+              <button class="secondary-btn" id="runSixwayBtn" type="button">运行六组对比</button>
+            </div>
+          </form>
+
+          <p class="inline-note">
+            单组测试默认写入 <code>data/evaluation_runs/ui_runs</code>，六组对比仍沿用项目原有的 sixway 输出目录命名方式。
+          </p>
+        </section>
+
+        <section class="card card-status">
+          <div class="card-header">
+            <div>
+              <p class="card-kicker">Live Status</p>
+              <h2>运行状态与日志</h2>
+            </div>
+          </div>
+
+          <div id="jobSummary" class="job-summary empty-state">
+            当前没有正在运行的任务。
+          </div>
+          <pre id="jobLog" class="job-log">等待任务启动...</pre>
+        </section>
+
+        <section class="card card-chart">
+          <div class="card-header">
+            <div>
+              <p class="card-kicker">Comparison</p>
+              <h2 id="comparisonTitle">最近结果对比</h2>
+            </div>
+            <div class="subtle-tag" id="comparisonSource">-</div>
+          </div>
+
+          <div class="comparison-charts">
+            <div class="metric-chart-card">
+              <div class="metric-chart-head">
+                <h3>六组准确率对比</h3>
+                <span id="accuracyRangeNote">-</span>
+              </div>
+              <div class="chart-shell chart-shell-tall">
+                <div class="chart-grid"></div>
+                <div class="chart-axis">
+                  <span id="accuracyTickTop">-</span>
+                  <span id="accuracyTickMid">-</span>
+                  <span id="accuracyTickBottom">-</span>
+                </div>
+                <div class="metric-bar-chart" id="accuracyChart"></div>
+              </div>
+            </div>
+
+            <div class="metric-chart-card">
+              <div class="metric-chart-head">
+                <h3>六组执行率对比</h3>
+                <span id="executionRangeNote">-</span>
+              </div>
+              <div class="chart-shell chart-shell-tall">
+                <div class="chart-grid"></div>
+                <div class="chart-axis">
+                  <span id="executionTickTop">-</span>
+                  <span id="executionTickMid">-</span>
+                  <span id="executionTickBottom">-</span>
+                </div>
+                <div class="metric-bar-chart" id="executionChart"></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="table-wrap">
+            <table class="data-table" id="comparisonTable">
+              <thead>
+                <tr>
+                  <th>标签</th>
+                  <th>EX(%)</th>
+                  <th>Exec(%)</th>
+                  <th>Correct/Total</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="card card-history">
+          <div class="card-header">
+            <div>
+              <p class="card-kicker">Recent Runs</p>
+              <h2>历史结果</h2>
+            </div>
+          </div>
+
+          <div class="table-wrap">
+            <table class="data-table" id="historyTable">
+              <thead>
+                <tr>
+                  <th>标签</th>
+                  <th>EX(%)</th>
+                  <th>Exec(%)</th>
+                  <th>数据集</th>
+                  <th>结束时间</th>
+                  <th>文件</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="card card-viewer">
+          <div class="card-header">
+            <div>
+              <p class="card-kicker">Inspector</p>
+              <h2>结果查看器</h2>
+            </div>
+            <div class="subtle-tag" id="viewerPath">尚未选择文件</div>
+          </div>
+          <pre id="fileViewer" class="file-viewer">点击历史结果中的“摘要”或“明细”即可在这里查看内容。</pre>
+        </section>
+      </main>
+    </div>
+
+    <script src="/static/app.js"></script>
+  </body>
+  </html>

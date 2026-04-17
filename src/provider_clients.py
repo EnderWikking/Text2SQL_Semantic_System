@@ -18,8 +18,8 @@ def _require_env(name):
 
 def get_api_mode():
     mode = os.getenv("API_MODE", "deepseek").strip().lower()
-    if mode not in ("lab", "deepseek"):
-        raise RuntimeError("API_MODE 仅支持 'deepseek' 或 'lab'")
+    if mode not in ("lab", "deepseek", "aliyun"):
+        raise RuntimeError("API_MODE 仅支持 'deepseek'、'aliyun' 或 'lab'")
     return mode
 
 
@@ -30,6 +30,20 @@ def _chat_config():
             "api_key": _require_env("LAB_API_KEY"),
             "base_url": os.getenv("LAB_CHAT_BASE_URL", "https://qwen.nju-slab.cn/v1").strip(),
             "model": os.getenv("LAB_CHAT_MODEL", "qwen-local").strip(),
+        }
+    if mode == "aliyun":
+        api_key = (
+            os.getenv("ALIYUN_CHAT_API_KEY", "").strip()
+            or os.getenv("DASHSCOPE_API_KEY", "").strip()
+            or _require_env("DASHSCOPE_API_KEY")
+        )
+        return {
+            "api_key": api_key,
+            "base_url": os.getenv(
+                "ALIYUN_CHAT_BASE_URL",
+                os.getenv("DASHSCOPE_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1"),
+            ).strip(),
+            "model": os.getenv("ALIYUN_CHAT_MODEL", "qwen3.6-plus").strip(),
         }
     return {
         "api_key": _require_env("DEEPSEEK_API_KEY"),
@@ -45,6 +59,21 @@ def _embed_config():
             "api_key": os.getenv("LAB_EMBED_API_KEY", os.getenv("LAB_API_KEY", "")).strip() or _require_env("LAB_API_KEY"),
             "base_url": os.getenv("LAB_EMBED_BASE_URL", "https://embedding.nju-slab.cn/v1").strip(),
             "model": os.getenv("LAB_EMBED_MODEL", "intfloat/multilingual-e5-large").strip(),
+        }
+    if mode == "aliyun":
+        api_key = (
+            os.getenv("ALIYUN_EMBED_API_KEY", "").strip()
+            or os.getenv("ALIYUN_CHAT_API_KEY", "").strip()
+            or os.getenv("DASHSCOPE_API_KEY", "").strip()
+            or _require_env("DASHSCOPE_API_KEY")
+        )
+        return {
+            "api_key": api_key,
+            "base_url": os.getenv(
+                "ALIYUN_EMBED_BASE_URL",
+                os.getenv("ALIYUN_CHAT_BASE_URL", os.getenv("DASHSCOPE_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1")),
+            ).strip(),
+            "model": os.getenv("ALIYUN_EMBED_MODEL", "text-embedding-v3").strip(),
         }
     embed_api_key = os.getenv("DEEPSEEK_EMBED_API_KEY", "").strip()
     embed_model = os.getenv("DEEPSEEK_EMBED_MODEL", "").strip()

@@ -5,13 +5,17 @@
 # ===== DeepSeek Chat =====
 export DEEPSEEK_API_KEY='YOUR_DEEPSEEK_API_KEY'
 
+# ===== Aliyun Chat =====
+export ALIYUN_CHAT_API_KEY='YOUR_DASHSCOPE_API_KEY'
+export ALIYUN_CHAT_MODEL='qwen3.6-plus'
+
 # ===== Embedding（二选一或都配）=====
 # 方案 A：DeepSeek embedding
 # export DEEPSEEK_EMBED_API_KEY='YOUR_DEEPSEEK_EMBED_API_KEY'
 # export DEEPSEEK_EMBED_BASE_URL='https://api.deepseek.com'
 # export DEEPSEEK_EMBED_MODEL='YOUR_DEEPSEEK_EMBED_MODEL'
 
-# 方案 B：阿里 embedding（推荐你当前沿用）
+# 方案 B：阿里 embedding（可供 deepseek/aliyun 模式复用）
 export DASHSCOPE_API_KEY='YOUR_DASHSCOPE_API_KEY'
 export ALIYUN_EMBED_API_KEY='YOUR_DASHSCOPE_API_KEY'
 

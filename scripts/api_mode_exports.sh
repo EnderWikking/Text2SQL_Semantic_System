@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # 用法：
 #   source scripts/api_mode_exports.sh deepseek
+#   source scripts/api_mode_exports.sh aliyun
 #   source scripts/api_mode_exports.sh lab
 #
 # 说明：
@@ -33,6 +34,15 @@ if [ "$MODE" = "deepseek" ]; then
   export DASHSCOPE_BASE_URL='https://dashscope.aliyuncs.com/compatible-mode/v1'
   export ALIYUN_EMBED_MODEL='text-embedding-v3'
 
+elif [ "$MODE" = "aliyun" ]; then
+  # ===== 阿里云 Qwen 模式 =====
+  export API_MODE=aliyun
+  export DASHSCOPE_BASE_URL='https://dashscope.aliyuncs.com/compatible-mode/v1'
+  export ALIYUN_CHAT_BASE_URL="${ALIYUN_CHAT_BASE_URL:-$DASHSCOPE_BASE_URL}"
+  export ALIYUN_CHAT_MODEL='qwen3.6-plus'
+  export ALIYUN_EMBED_BASE_URL="${ALIYUN_EMBED_BASE_URL:-$DASHSCOPE_BASE_URL}"
+  export ALIYUN_EMBED_MODEL='text-embedding-v3'
+
 elif [ "$MODE" = "lab" ]; then
   # ===== 实验室模式 =====
   export API_MODE=lab
@@ -43,7 +53,7 @@ elif [ "$MODE" = "lab" ]; then
 
 else
   echo "不支持的模式: $MODE"
-  echo "可选值: deepseek | lab"
+  echo "可选值: deepseek | aliyun | lab"
   return 1
 fi
 
@@ -68,6 +78,17 @@ fi
 if [ "$MODE" = "lab" ]; then
   if [ -z "${LAB_API_KEY:-}" ]; then
     echo "缺少 LAB_API_KEY。请在 ${PRIVATE_FILE} 中配置。"
+    return 1
+  fi
+fi
+
+if [ "$MODE" = "aliyun" ]; then
+  if [ -z "${ALIYUN_CHAT_API_KEY:-}" ] && [ -z "${DASHSCOPE_API_KEY:-}" ]; then
+    echo "缺少阿里云 Chat key。请配置 ALIYUN_CHAT_API_KEY 或 DASHSCOPE_API_KEY。"
+    return 1
+  fi
+  if [ -z "${ALIYUN_EMBED_API_KEY:-}" ] && [ -z "${ALIYUN_CHAT_API_KEY:-}" ] && [ -z "${DASHSCOPE_API_KEY:-}" ]; then
+    echo "aliyun 模式缺少 embedding key。请配置 ALIYUN_EMBED_API_KEY 或 DASHSCOPE_API_KEY。"
     return 1
   fi
 fi
